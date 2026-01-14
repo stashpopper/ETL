@@ -89,14 +89,6 @@ conn.close()
 print("✓ Data loaded to retail_orders.db")
 print("✓ Table name: df_orders")
 
-
-# ==============================================================================
-# STEP 5: VERIFY - Check the data
-# ==============================================================================
-print("\n" + "="*60)
-print("ETL COMPLETED SUCCESSFULLY")
-print("="*60)
-
 # Quick summary
 print(f"\nTotal Orders: {len(df):,}")
 print(f"Total Revenue: ${df['sale_price'].sum():,.2f}")

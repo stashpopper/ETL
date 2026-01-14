@@ -1,88 +1,106 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# ----------------------------
-# 1. Download dataset (Kaggle)
-# ----------------------------
+"""
+Retail Orders ETL Project
+"""
 
-# !pip install kaggle
-import kaggle
-
-!kaggle datasets download ankitbansal06/retail-orders -f orders.csv
-
-
-# ----------------------------
-# 2. Extract ZIP file
-# ----------------------------
-
+import pandas as pd
+import sqlite3
 import zipfile
 
+# ==============================================================================
+# STEP 1: EXTRACT - Download and unzip data
+# ==============================================================================
+print("Step 1: Downloading data from Kaggle...")
+
+import kaggle
+
+# Download the dataset
+kaggle.api.dataset_download_files(
+    'ankitbansal06/retail-orders',
+    path='.',
+    unzip=False
+)
+
+print("✓ Downloaded orders.csv.zip")
+
+# Unzip the file
+print("\nExtracting ZIP file...")
 with zipfile.ZipFile('orders.csv.zip', 'r') as zip_ref:
     zip_ref.extractall()
 
-
-# ----------------------------
-# 3. Read CSV & handle nulls
-# ----------------------------
-
-import pandas as pd
-
-df = pd.read_csv(
-    'orders.csv',
-    na_values=['Not Available', 'unknown']
-)
+print("✓ Extracted orders.csv")
 
 
-# ----------------------------
-# 4. Normalize column names
-# ----------------------------
+# ==============================================================================
+# STEP 2: LOAD CSV - Read data into pandas
+# ==============================================================================
+print("\nStep 2: Reading CSV file...")
 
-df.columns = (
-    df.columns
-      .str.lower()
-      .str.replace(' ', '_')
-)
+df = pd.read_csv('orders.csv')
+
+print(f"✓ Loaded {len(df)} rows")
+print(f"✓ Columns: {df.columns.tolist()}")
 
 
-# ----------------------------
-# 5. Derive business metrics
-# ----------------------------
+# ==============================================================================
+# STEP 3: TRANSFORM - Clean and prepare data
+# ==============================================================================
+print("\nStep 3: Cleaning data...")
 
-df['discount'] = df['list_price'] * df['discount_percent'] * 0.01
-df['sale_price'] = df['list_price'] - df['discount']
+# 3.1 - Clean column names (remove spaces, make lowercase)
+df.columns = df.columns.str.lower().str.replace(' ', '_')
+
+# 3.2 - Handle missing values
+df['discount_percent'] = df['discount_percent'].fillna(0)
+df['quantity'] = df['quantity'].fillna(1)
+
+# 3.3 - Fix data types
+df['order_date'] = pd.to_datetime(df['order_date'])
+df['list_price'] = pd.to_numeric(df['list_price'], errors='coerce')
+df['cost_price'] = pd.to_numeric(df['cost_price'], errors='coerce')
+df['discount_percent'] = pd.to_numeric(df['discount_percent'], errors='coerce')
+
+# 3.4 - Remove rows with missing important data
+df = df.dropna(subset=['order_id', 'order_date'])
+
+# 3.5 - Add new calculated columns
+df['discount_amount'] = df['list_price'] * (df['discount_percent'] / 100)
+df['sale_price'] = df['list_price'] - df['discount_amount']
 df['profit'] = df['sale_price'] - df['cost_price']
 
-
-# ----------------------------
-# 6. Convert date column
-# ----------------------------
-
-df['order_date'] = pd.to_datetime(df['order_date'])
+print(f"✓ Cleaned data: {len(df)} rows ready")
 
 
-# ----------------------------
-# 7. Drop redundant columns
-# ----------------------------
+# ==============================================================================
+# STEP 4: LOAD - Save to SQLite database
+# ==============================================================================
+print("\nStep 4: Loading into database...")
 
-df.drop(
-    columns=['list_price', 'cost_price', 'discount_percent', 'discount'],
-    inplace=True
-)
+# Connect to database (creates file if doesn't exist)
+conn = sqlite3.connect('retail_orders.db')
 
-
-# ----------------------------
-# 8. Load into SQLite
-# ----------------------------
-
-import sqlite3
-
-conn = sqlite3.connect('orders.db')
-
-df.to_sql(
-    'df_orders',
-    conn,
-    if_exists='replace',
-    index=False
-)
+# Save dataframe to database
+df.to_sql('df_orders', conn, if_exists='replace', index=False)
 
 conn.close()
+
+print("✓ Data loaded to retail_orders.db")
+print("✓ Table name: df_orders")
+
+
+# ==============================================================================
+# STEP 5: VERIFY - Check the data
+# ==============================================================================
+print("\n" + "="*60)
+print("ETL COMPLETED SUCCESSFULLY")
+print("="*60)
+
+# Quick summary
+print(f"\nTotal Orders: {len(df):,}")
+print(f"Total Revenue: ${df['sale_price'].sum():,.2f}")
+print(f"Total Profit: ${df['profit'].sum():,.2f}")
+print(f"Date Range: {df['order_date'].min()} to {df['order_date'].max()}")
+
+print("\n✅ You can now run SQL queries on retail_orders.db")
